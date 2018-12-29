@@ -14,8 +14,6 @@
 package ast
 
 import (
-	"strings"
-
 	"github.com/pingcap/errors"
 	"github.com/pingcap/parser/auth"
 	. "github.com/pingcap/parser/format"
@@ -2183,7 +2181,7 @@ type FrameBound struct {
 	Expr      ExprNode
 	// `Unit` is used to indicate the units in which the `Expr` should be interpreted.
 	// For example: '2:30' MINUTE_SECOND.
-	Unit ExprNode
+	Unit TimeUnitType
 }
 
 // Restore implements Node interface.
@@ -2195,7 +2193,7 @@ func (n *FrameBound) Restore(ctx *RestoreCtx) error {
 	case CurrentRow:
 		ctx.WriteKeyWord("CURRENT ROW")
 	case Preceding, Following:
-		if n.Unit != nil {
+		if n.Unit != TimeUnitInvalid {
 			ctx.WriteKeyWord("INTERVAL ")
 		}
 		if n.Expr != nil {
@@ -2203,13 +2201,9 @@ func (n *FrameBound) Restore(ctx *RestoreCtx) error {
 				return errors.Annotate(err, "An error occurred while restore FrameBound.Expr")
 			}
 		}
-		if n.Unit != nil {
-			// Here the Unit string should not be quoted.
-			// TODO: This is a temporary workaround that should be changed once something like "Keyword Expression" is implemented.
-			var sb strings.Builder
-			n.Unit.Restore(NewRestoreCtx(0, &sb))
+		if n.Unit != TimeUnitInvalid {
 			ctx.WritePlain(" ")
-			ctx.WriteKeyWord(sb.String())
+			ctx.WriteKeyWord(n.Unit.String())
 		}
 		if n.Type == Preceding {
 			ctx.WriteKeyWord(" PRECEDING")
@@ -2233,13 +2227,6 @@ func (n *FrameBound) Accept(v Visitor) (Node, bool) {
 			return n, false
 		}
 		n.Expr = node.(ExprNode)
-	}
-	if n.Unit != nil {
-		node, ok := n.Unit.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Unit = node.(ExprNode)
 	}
 	return v.Leave(n)
 }
