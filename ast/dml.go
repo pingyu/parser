@@ -805,6 +805,8 @@ type SelectStmt struct {
 	QueryBlockOffset int
 	// SelectIntoOpt is the select-into option.
 	SelectIntoOpt *SelectIntoOption
+	// With is the with clause (CTE, Common Table Expression).
+	With *WithClause
 }
 
 // Restore implements Node interface.
@@ -2778,3 +2780,62 @@ const (
 	TimestampBoundReadTimestamp
 	TimestampBoundMinReadTimestamp
 )
+
+// WithClauseItem represents an item in with clause.
+type WithClauseItem struct {
+	node
+	Name        model.CIStr
+	ColumnNames []model.CIStr
+	Select      *SelectStmt
+}
+
+// Restore implements Node interface.
+func (n *WithClauseItem) Restore(ctx *format.RestoreCtx) error {
+	//TODO
+	return nil
+}
+
+// Accept implements Node Accept interface.
+func (n *WithClauseItem) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*WithClauseItem)
+	node, ok := n.Select.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.Select = node.(*SelectStmt)
+	return v.Leave(n)
+}
+
+// WithClause represents with clause.
+type WithClause struct {
+	node
+	IsRecursive bool
+	Items       []*WithClauseItem
+}
+
+// Restore implements Node interface.
+func (n *WithClause) Restore(ctx *format.RestoreCtx) error {
+	//TODO
+	return nil
+}
+
+// Accept implements Node Accept interface.
+func (n *WithClause) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*WithClause)
+	for i, val := range n.Items {
+		node, ok := val.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.Items[i] = node.(*WithClauseItem)
+	}
+	return v.Leave(n)
+}

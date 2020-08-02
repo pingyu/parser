@@ -220,6 +220,7 @@ import (
 	rename            "RENAME"
 	repeat            "REPEAT"
 	replace           "REPLACE"
+	recursive         "RECURSIVE"
 	require           "REQUIRE"
 	restrict          "RESTRICT"
 	revoke            "REVOKE"
@@ -818,6 +819,7 @@ import (
 	LockTablesStmt       "Lock tables statement"
 	PreparedStmt         "PreparedStmt"
 	SelectStmt           "SELECT statement"
+	SelectStmtWithCTE    "SELECT statement with WithClause (CTE, Common Table Expression)"
 	RenameTableStmt      "rename table statement"
 	ReplaceIntoStmt      "REPLACE INTO statement"
 	RecoverTableStmt     "recover table statement"
@@ -1099,6 +1101,12 @@ import (
 	WhereClauseOptional                    "Optional WHERE clause"
 	WhenClause                             "When clause"
 	WhenClauseList                         "When clause list"
+	WithRecursiveOpt                       "With clause recursive opt"
+	WithColumnList                         "With clause column list"
+	WithColumnListOpt                      "With clause column list opt"
+	WithClauseItem                         "With clause item"
+	WithClauseItemList                     "With clause item list"
+	WithClause                             "With clause (Common Table Expressions)"
 	WithReadLockOpt                        "With Read Lock opt"
 	WithGrantOptionOpt                     "With Grant Option opt"
 	WithValidation                         "with validation"
@@ -7213,6 +7221,15 @@ SelectStmt:
 		$$ = st
 	}
 
+// See https://dev.mysql.com/doc/refman/8.0/en/with.html
+SelectStmtWithCTE:
+	WithClause SelectStmt
+	{
+		st := $2.(*ast.SelectStmt)
+		st.With = $1.(*ast.WithClause)
+		$$ = st
+	}
+
 FromDual:
 	"FROM" "DUAL"
 
@@ -7918,6 +7935,61 @@ SelectStmtIntoOption:
 		}
 
 		$$ = x
+	}
+
+WithRecursiveOpt:
+	{
+		$$ = false
+	}
+|	"RECURSIVE"
+	{
+		$$ = true
+	}
+
+WithColumnList:
+	Identifier
+	{
+		$$ = []model.CIStr{model.NewCIStr($1)}
+	}
+|	WithColumnList ',' Identifier
+	{
+		$$ = append($1.([]model.CIStr), model.NewCIStr($3))
+	}
+
+WithColumnListOpt:
+	{
+		$$ = nil
+	}
+|	'(' WithColumnList ')'
+	{
+		$$ = $2
+	}
+
+WithClauseItem:
+	Identifier WithColumnListOpt "AS" '(' SelectStmt ')'
+	{
+		$$ = &ast.WithClauseItem{
+			Name:        model.NewCIStr($1),
+			ColumnNames: $2.([]model.CIStr),
+			Select:      $5.(*ast.SelectStmt),
+		}
+	}
+
+WithClauseItemList:
+	WithClauseItem
+	{
+		$$ = []*ast.WithClauseItem{$1.(*ast.WithClauseItem)}
+	}
+|	WithClauseItemList ',' WithClauseItem
+	{
+		$$ = append($1.([]*ast.WithClauseItem), $3.(*ast.WithClauseItem))
+	}
+
+// See https://dev.mysql.com/doc/refman/8.0/en/with.html
+WithClause:
+	"WITH" WithRecursiveOpt WithClauseItemList
+	{
+		$$ = &ast.WithClause{IsRecursive: $2, Items: $3.([]*ast.WithClauseItem)}
 	}
 
 // See https://dev.mysql.com/doc/refman/5.7/en/subqueries.html
