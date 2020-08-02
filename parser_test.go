@@ -70,9 +70,7 @@ func (s *testParserSuite) TestSimple(c *C) {
 		"delayed", "high_priority", "low_priority",
 		"cumeDist", "denseRank", "firstValue", "lag", "lastValue", "lead", "nthValue", "ntile",
 		"over", "percentRank", "rank", "row", "rows", "rowNumber", "window", "linear",
-		"match", "until", "placement",
-		// TODO: support the following keywords
-		// "with",
+		"match", "until", "placement", "with", "recursive",
 	}
 	for _, kw := range reservedKws {
 		src := fmt.Sprintf("SELECT * FROM db.%s;", kw)
@@ -5331,4 +5329,22 @@ func (s *testParserSuite) TestStatisticsOps(c *C) {
 	c.Assert(v.Columns[0].Name, Equals, model.CIStr{O: "a", L: "a"})
 	c.Assert(v.Columns[1].Name, Equals, model.CIStr{O: "b", L: "b"})
 	c.Assert(v.Columns[2].Name, Equals, model.CIStr{O: "c", L: "c"})
+}
+
+// For CTE (Common Table Expression).
+// See https://dev.mysql.com/doc/refman/8.0/en/with.html
+func (s *testParserSuite) TestCTE(c *C) {
+	table := []testCase{
+		{
+			`with recursive cte1 (a, b) AS (SELECT a, b FROM table1), cte2 AS (SELECT c, d FROM table2) SELECT b, d FROM cte1 JOIN cte2 WHERE cte1.a = cte2.c;`,
+			true,
+			"WITH RECURSIVE `cte1` (`a`, `b`) AS (SELECT `a`,`b` FROM `table1`), `cte2` AS (SELECT `c`,`d` FROM `table2`) SELECT `b`,`d` FROM `cte1` JOIN `cte2` WHERE `cte1`.`a`=`cte2`.`c`",
+		},
+		{
+			`WITH cte (col1, col2) AS ( SELECT 1, 2 UNION ALL SELECT 3, 4) SELECT col1, col2 FROM cte;`,
+			true,
+			"WITH `cte` (`col1`, `col2`) AS (SELECT 1,2 UNION ALL SELECT 3,4) SELECT `col1`,`col2` FROM `cte`",
+		},
+	}
+	s.RunTest(c, table)
 }

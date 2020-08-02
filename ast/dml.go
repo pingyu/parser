@@ -811,6 +811,13 @@ type SelectStmt struct {
 
 // Restore implements Node interface.
 func (n *SelectStmt) Restore(ctx *format.RestoreCtx) error {
+	if n.With != nil {
+		if err := n.With.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while restore SelectStmt.With")
+		}
+		ctx.WritePlain(" ")
+	}
+
 	ctx.WriteKeyWord("SELECT ")
 
 	if n.SelectStmtOpts.Priority > 0 {
@@ -1018,6 +1025,14 @@ func (n *SelectStmt) Accept(v Visitor) (Node, bool) {
 			return n, false
 		}
 		n.Limit = node.(*Limit)
+	}
+
+	if n.With != nil {
+		node, ok := n.With.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.With = node.(*WithClause)
 	}
 
 	return v.Leave(n)
@@ -2786,12 +2801,26 @@ type WithClauseItem struct {
 	node
 	Name        model.CIStr
 	ColumnNames []model.CIStr
-	Select      *SelectStmt
+	Query       *SubqueryExpr
 }
 
 // Restore implements Node interface.
 func (n *WithClauseItem) Restore(ctx *format.RestoreCtx) error {
-	//TODO
+	ctx.WriteName(n.Name.String())
+	if len(n.ColumnNames) > 0 {
+		ctx.WritePlain(" (")
+		for i := range n.ColumnNames {
+			if i != 0 {
+				ctx.WritePlain(", ")
+			}
+			ctx.WriteName(n.ColumnNames[i].String())
+		}
+		ctx.WritePlain(")")
+	}
+	ctx.WriteKeyWord(" AS ")
+	if err := n.Query.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while restore WithClauseItem.Query")
+	}
 	return nil
 }
 
@@ -2802,11 +2831,11 @@ func (n *WithClauseItem) Accept(v Visitor) (Node, bool) {
 		return v.Leave(newNode)
 	}
 	n = newNode.(*WithClauseItem)
-	node, ok := n.Select.Accept(v)
+	node, ok := n.Query.Accept(v)
 	if !ok {
 		return n, false
 	}
-	n.Select = node.(*SelectStmt)
+	n.Query = node.(*SubqueryExpr)
 	return v.Leave(n)
 }
 
@@ -2819,7 +2848,18 @@ type WithClause struct {
 
 // Restore implements Node interface.
 func (n *WithClause) Restore(ctx *format.RestoreCtx) error {
-	//TODO
+	ctx.WriteKeyWord("WITH ")
+	if n.IsRecursive {
+		ctx.WriteKeyWord("RECURSIVE ")
+	}
+	for i, item := range n.Items {
+		if i != 0 {
+			ctx.WritePlain(", ")
+		}
+		if err := item.Restore(ctx); err != nil {
+			return errors.Annotatef(err, "An error occurred while restore WithClause.Items[%d]", i)
+		}
+	}
 	return nil
 }
 

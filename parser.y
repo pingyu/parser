@@ -825,7 +825,7 @@ import (
 	LockTablesStmt       "Lock tables statement"
 	PreparedStmt         "PreparedStmt"
 	SelectStmt           "SELECT statement"
-	SelectStmtWithCTE    "SELECT statement with WithClause (CTE, Common Table Expression)"
+	SelectStmtWithCTEOpt "SELECT statement with optional WithClause (CTE, Common Table Expression)"
 	RenameTableStmt      "rename table statement"
 	ReplaceIntoStmt      "REPLACE INTO statement"
 	RecoverTableStmt     "recover table statement"
@@ -7265,13 +7265,14 @@ SelectStmt:
 	}
 
 // See https://dev.mysql.com/doc/refman/8.0/en/with.html
-SelectStmtWithCTE:
+SelectStmtWithCTEOpt:
 	WithClause SelectStmt
 	{
 		st := $2.(*ast.SelectStmt)
 		st.With = $1.(*ast.WithClause)
 		$$ = st
 	}
+|	SelectStmt
 
 FromDual:
 	"FROM" "DUAL"
@@ -8009,13 +8010,16 @@ WithColumnListOpt:
 	}
 
 WithClauseItem:
-	Identifier WithColumnListOpt "AS" '(' SelectStmt ')'
+	Identifier WithColumnListOpt "AS" SubSelect
 	{
-		$$ = &ast.WithClauseItem{
-			Name:        model.NewCIStr($1),
-			ColumnNames: $2.([]model.CIStr),
-			Select:      $5.(*ast.SelectStmt),
+		x := &ast.WithClauseItem{
+			Name:  model.NewCIStr($1),
+			Query: $4.(*ast.SubqueryExpr),
 		}
+		if $2 != nil {
+			x.ColumnNames = $2.([]model.CIStr)
+		}
+		$$ = x
 	}
 
 WithClauseItemList:
@@ -8032,7 +8036,7 @@ WithClauseItemList:
 WithClause:
 	"WITH" WithRecursiveOpt WithClauseItemList
 	{
-		$$ = &ast.WithClause{IsRecursive: $2, Items: $3.([]*ast.WithClauseItem)}
+		$$ = &ast.WithClause{IsRecursive: $2.(bool), Items: $3.([]*ast.WithClauseItem)}
 	}
 
 // See https://dev.mysql.com/doc/refman/5.7/en/subqueries.html
@@ -9521,7 +9525,7 @@ Statement:
 |	RecoverTableStmt
 |	RevokeStmt
 |	RevokeRoleStmt
-|	SelectStmt
+|	SelectStmtWithCTEOpt
 |	SetOprStmt
 |	SetStmt
 |	SetRoleStmt
@@ -9543,7 +9547,7 @@ Statement:
 |	ShutdownStmt
 
 TraceableStmt:
-	SelectStmt
+	SelectStmtWithCTEOpt
 |	DeleteFromStmt
 |	UpdateStmt
 |	InsertIntoStmt
@@ -9556,7 +9560,7 @@ TraceableStmt:
 |	SetStmt
 
 ExplainableStmt:
-	SelectStmt
+	SelectStmtWithCTEOpt
 |	DeleteFromStmt
 |	UpdateStmt
 |	InsertIntoStmt
